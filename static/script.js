@@ -22,6 +22,12 @@ const qrUrlInput = document.getElementById('qrUrlInput');
 const processQRBtn = document.getElementById('processQR');
 const clearQRBtn = document.getElementById('clearQR');
 
+// Debug DOM elements on page load
+console.log('DOM Elements loaded:');
+console.log('statusDiv:', statusDiv);
+console.log('batchResultDiv:', batchResultDiv);
+console.log('rawTextArea:', rawTextArea);
+
 // Initialize Tesseract worker
 let worker = null;
 
@@ -117,7 +123,20 @@ function clearQRInput() {
 
 async function processQROptimizedResult(data) {
     console.log('processQROptimizedResult called with data:', data);
-    console.log('DOM elements - statusDiv:', statusDiv, 'batchResultDiv:', batchResultDiv);
+    console.log('DOM elements exist check:');
+    console.log('- statusDiv exists:', !!statusDiv);
+    console.log('- batchResultDiv exists:', !!batchResultDiv);
+    console.log('- rawTextArea exists:', !!rawTextArea);
+
+    // Additional check - try to get elements again in case they were not loaded initially
+    const currentStatusDiv = document.getElementById('status');
+    const currentBatchResultDiv = document.getElementById('batchResult');
+    const currentRawTextArea = document.getElementById('rawText');
+
+    console.log('Fresh DOM element lookup:');
+    console.log('- statusDiv (fresh):', currentStatusDiv);
+    console.log('- batchResultDiv (fresh):', currentBatchResultDiv);
+    console.log('- rawTextArea (fresh):', currentRawTextArea);
 
     if (isProcessing) {
         console.log('Still processing, returning...');
@@ -125,9 +144,11 @@ async function processQROptimizedResult(data) {
     }
 
     isProcessing = true;
-    if (statusDiv) {
-        statusDiv.textContent = '處理QR碼結果...';
-        statusDiv.className = 'status processing';
+    if (currentStatusDiv) {
+        currentStatusDiv.textContent = '處理QR碼結果...';
+        currentStatusDiv.className = 'status processing';
+    } else {
+        console.error('statusDiv not found!');
     }
 
     try {
@@ -156,7 +177,12 @@ async function processQROptimizedResult(data) {
                     </div>
                 `;
                 console.log('Setting batchResultDiv HTML:', htmlContent);
-                batchResultDiv.innerHTML = htmlContent;
+                if (currentBatchResultDiv) {
+                    currentBatchResultDiv.innerHTML = htmlContent;
+                    console.log('Successfully set batchResultDiv HTML');
+                } else {
+                    console.error('currentBatchResultDiv is null, cannot set HTML');
+                }
             } else {
                 const htmlContent = `
                     <div>
@@ -167,45 +193,62 @@ async function processQROptimizedResult(data) {
                     </div>
                 `;
                 console.log('Setting batchResultDiv HTML (no product):', htmlContent);
-                batchResultDiv.innerHTML = htmlContent;
+                if (currentBatchResultDiv) {
+                    currentBatchResultDiv.innerHTML = htmlContent;
+                    console.log('Successfully set batchResultDiv HTML (no product)');
+                } else {
+                    console.error('currentBatchResultDiv is null, cannot set HTML (no product)');
+                }
             }
 
             console.log('Setting batchResultDiv color and status');
-            batchResultDiv.style.color = '#155724';
-            if (statusDiv) {
-                statusDiv.textContent = '批次號識別成功！';
-                statusDiv.className = 'status success';
+            if (currentBatchResultDiv) {
+                currentBatchResultDiv.style.color = '#155724';
+                console.log('Successfully set batchResultDiv color');
+            }
+            if (currentStatusDiv) {
+                currentStatusDiv.textContent = '批次號識別成功！';
+                currentStatusDiv.className = 'status success';
+                console.log('Successfully set statusDiv text and class');
             }
 
             // Display content preview in raw text area
-            rawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 提取的批次號 ---\n\n${batchNumber}`;
+            if (currentRawTextArea) {
+                currentRawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 提取的批次號 ---\n\n${batchNumber}`;
+                console.log('Successfully set rawTextArea value');
+            } else {
+                console.error('currentRawTextArea is null, cannot set value');
+            }
 
         } else {
             console.log('No batch found in data');
             console.log('Setting batchResultDiv for no batch found');
-            batchResultDiv.innerHTML = '<div>網址內容中未找到有效的批次號</div>';
-            batchResultDiv.style.color = '#721c24';
-            if (statusDiv) {
-                statusDiv.textContent = '處理完成，但未找到有效的批次號';
-                statusDiv.className = 'status error';
+            if (currentBatchResultDiv) {
+                currentBatchResultDiv.innerHTML = '<div>網址內容中未找到有效的批次號</div>';
+                currentBatchResultDiv.style.color = '#721c24';
+                console.log('Successfully set batchResultDiv for no batch found');
             }
-            if (rawTextArea) {
-                rawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 處理結果 ---\n\n未找到有效的批次號`;
+            if (currentStatusDiv) {
+                currentStatusDiv.textContent = '處理完成，但未找到有效的批次號';
+                currentStatusDiv.className = 'status error';
+            }
+            if (currentRawTextArea) {
+                currentRawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 處理結果 ---\n\n未找到有效的批次號`;
             }
         }
 
     } catch (error) {
         console.error('Error processing optimized QR result:', error);
         console.log('Error details:', error);
-        if (statusDiv) {
-            statusDiv.textContent = '處理QR碼時發生錯誤：' + error.message;
-            statusDiv.className = 'status error';
+        if (currentStatusDiv) {
+            currentStatusDiv.textContent = '處理QR碼時發生錯誤：' + error.message;
+            currentStatusDiv.className = 'status error';
         }
-        if (batchResultDiv) {
-            batchResultDiv.textContent = '';
+        if (currentBatchResultDiv) {
+            currentBatchResultDiv.textContent = '';
         }
-        if (rawTextArea) {
-            rawTextArea.value = '';
+        if (currentRawTextArea) {
+            currentRawTextArea.value = '';
         }
     } finally {
         console.log('processQROptimizedResult finished, setting isProcessing to false');
