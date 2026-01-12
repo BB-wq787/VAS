@@ -116,19 +116,32 @@ function clearQRInput() {
 }
 
 async function processQROptimizedResult(data) {
-    if (isProcessing) return;
+    console.log('processQROptimizedResult called with data:', data);
+    console.log('DOM elements - statusDiv:', statusDiv, 'batchResultDiv:', batchResultDiv);
+
+    if (isProcessing) {
+        console.log('Still processing, returning...');
+        return;
+    }
 
     isProcessing = true;
-    statusDiv.textContent = '處理QR碼結果...';
-    statusDiv.className = 'status processing';
+    if (statusDiv) {
+        statusDiv.textContent = '處理QR碼結果...';
+        statusDiv.className = 'status processing';
+    }
 
     try {
+        console.log('data.batch_found:', data.batch_found);
+
         if (data.batch_found) {
             const batchNumber = data.batch_number;
             const productInfo = data.product_info;
 
+            console.log('batchNumber:', batchNumber);
+            console.log('productInfo:', productInfo);
+
             if (productInfo && productInfo.found) {
-                batchResultDiv.innerHTML = `
+                const htmlContent = `
                     <div style="margin-bottom: 10px;">
                         <strong>批次號：</strong>${batchNumber}
                     </div>
@@ -142,8 +155,10 @@ async function processQROptimizedResult(data) {
                         <strong>產品代碼：</strong>${productInfo.product_code}
                     </div>
                 `;
+                console.log('Setting batchResultDiv HTML:', htmlContent);
+                batchResultDiv.innerHTML = htmlContent;
             } else {
-                batchResultDiv.innerHTML = `
+                const htmlContent = `
                     <div>
                         <strong>批次號：</strong>${batchNumber}
                     </div>
@@ -151,30 +166,49 @@ async function processQROptimizedResult(data) {
                         此批次號尚未在產品資料庫中註冊
                     </div>
                 `;
+                console.log('Setting batchResultDiv HTML (no product):', htmlContent);
+                batchResultDiv.innerHTML = htmlContent;
             }
 
+            console.log('Setting batchResultDiv color and status');
             batchResultDiv.style.color = '#155724';
-            statusDiv.textContent = '批次號識別成功！';
-            statusDiv.className = 'status success';
+            if (statusDiv) {
+                statusDiv.textContent = '批次號識別成功！';
+                statusDiv.className = 'status success';
+            }
 
             // Display content preview in raw text area
             rawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 提取的批次號 ---\n\n${batchNumber}`;
 
         } else {
+            console.log('No batch found in data');
+            console.log('Setting batchResultDiv for no batch found');
             batchResultDiv.innerHTML = '<div>網址內容中未找到有效的批次號</div>';
             batchResultDiv.style.color = '#721c24';
-            statusDiv.textContent = '處理完成，但未找到有效的批次號';
-            statusDiv.className = 'status error';
-            rawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 處理結果 ---\n\n未找到有效的批次號`;
+            if (statusDiv) {
+                statusDiv.textContent = '處理完成，但未找到有效的批次號';
+                statusDiv.className = 'status error';
+            }
+            if (rawTextArea) {
+                rawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 處理結果 ---\n\n未找到有效的批次號`;
+            }
         }
 
     } catch (error) {
         console.error('Error processing optimized QR result:', error);
-        statusDiv.textContent = '處理QR碼時發生錯誤：' + error.message;
-        statusDiv.className = 'status error';
-        batchResultDiv.textContent = '';
-        rawTextArea.value = '';
+        console.log('Error details:', error);
+        if (statusDiv) {
+            statusDiv.textContent = '處理QR碼時發生錯誤：' + error.message;
+            statusDiv.className = 'status error';
+        }
+        if (batchResultDiv) {
+            batchResultDiv.textContent = '';
+        }
+        if (rawTextArea) {
+            rawTextArea.value = '';
+        }
     } finally {
+        console.log('processQROptimizedResult finished, setting isProcessing to false');
         isProcessing = false;
     }
 }
