@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>產品管理 - 批次號識別器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>產品管理系統</h1>
+        <nav class="main-nav">
+            <a href="/">識別器</a>
+            <a href="/products">產品管理</a>
+        </nav>
+
+        <div class="products-section">
+            <div class="product-controls">
+                <button id="addProductBtn" class="btn btn-primary">➕ 新增產品</button>
+                <button id="addBatchBtn" class="btn btn-success">新增批次</button>
+                <div id="message" class="message" style="display: none;"></div>
+            </div>
+
+            <div class="filter-controls">
+                <h3>篩選條件：</h3>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="filterProductName">產品名稱：</label>
+                        <input type="text" id="filterProductName" placeholder="輸入產品名稱" style="width: 150px;">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterProductCode">產品代碼：</label>
+                        <input type="text" id="filterProductCode" placeholder="輸入產品代碼" style="width: 100px;">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterBatchNumber">批次號：</label>
+                        <input type="text" id="filterBatchNumber" placeholder="輸入批次號" style="width: 120px;">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterShowEmpty">顯示選項：</label>
+                        <select id="filterShowEmpty" style="width: 120px;">
+                            <option value="all">全部顯示</option>
+                            <option value="with_batches">有批次的產品</option>
+                            <option value="without_batches">無批次的產品</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <button id="clearFiltersBtn" class="btn btn-secondary" style="margin-top: 18px;">清除篩選</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="products-table-container">
+                <table id="productsTable" class="products-table">
+                    <thead>
+                        <tr>
+                            <th>產品名稱</th>
+                            <th>產品代碼</th>
+                            <th>批次號</th>
+                            <th>唯一編號</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productsTableBody">
+                        <tr>
+                            <td colspan="5" class="loading">載入中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Add Product Modal -->
+        <div id="productModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>新增產品</h2>
+                <form id="productForm">
+                    <div class="form-group">
+                        <label for="productName">產品名稱：</label>
+                        <input type="text" id="productName" name="productName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="productBatchNumber">批次號：</label>
+                        <input type="text" id="productBatchNumber" name="productBatchNumber" required
+                               pattern="5[A-Z0-9]{9}" title="批次號必須是以5開頭的10個字符"
+                               placeholder="例如：5ABC123456">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">儲存</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeProductModal()">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Add Batch Modal -->
+        <div id="batchModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>新增批次</h2>
+                <form id="batchForm">
+                    <div class="form-group">
+                        <label for="batchProductId">選擇產品：</label>
+                        <select id="batchProductId" name="batchProductId" required>
+                            <option value="">請選擇產品...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="batchNumber">批次號：</label>
+                        <input type="text" id="batchNumber" name="batchNumber" required
+                               pattern="5[A-Z0-9]{9}" title="批次號必須是以5開頭的10個字符">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">儲存</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeBatchModal()">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Edit Product Modal -->
+        <div id="editProductModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>編輯產品</h2>
+                <form id="editProductForm">
+                    <div class="form-group">
+                        <label for="editProductName">產品名稱：</label>
+                        <input type="text" id="editProductName" name="editProductName" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">儲存</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeEditProductModal()">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Edit Batch Modal -->
+        <div id="editBatchModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>編輯批次</h2>
+                <form id="editBatchForm">
+                    <div class="form-group">
+                        <label for="editBatchNumber">批次號：</label>
+                        <input type="text" id="editBatchNumber" name="editBatchNumber" required
+                               pattern="5[A-Z0-9]{9}" title="批次號必須是以5開頭的10個字符">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">儲存</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeEditBatchModal()">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Delete Confirmation Modal -->
+        <div id="deleteModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="deleteModalTitle">確認刪除</h2>
+                <p id="deleteModalMessage">確定要刪除嗎？</p>
+                <div class="form-actions">
+                    <button id="confirmDelete" class="btn btn-danger">刪除</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='products.js') }}"></script>
+</body>
+</html>
