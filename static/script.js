@@ -82,21 +82,25 @@ async function processQRUrl() {
     statusDiv.className = 'status processing';
 
     try {
+        console.log('开始处理URL:', url);
         // Fetch URL and extract batch server-side (optimized)
         const response = await fetch('/api/extract_batch_from_url?url=' + encodeURIComponent(url));
+        console.log('API响应状态:', response.status);
+
         if (!response.ok) {
             throw new Error('無法訪問網址：' + response.status);
         }
 
         const data = await response.json();
+        console.log('API返回数据:', data);
         await processQROptimizedResult(data);
 
     } catch (error) {
         console.error('Error processing QR URL:', error);
         statusDiv.textContent = '處理失敗：' + error.message;
         statusDiv.className = 'status error';
-        batchResultDiv.textContent = '';
-        rawTextArea.value = '';
+        batchResultDiv.innerHTML = '<div style="color: #dc3545;">處理失敗，請檢查：<br>• URL格式是否正確<br>• 網路連線是否正常<br>• 目標網站是否可訪問</div>';
+        rawTextArea.value = `錯誤詳情：\n${error.message}\n\n請檢查：\n1. URL是否正確\n2. 網路連線是否正常\n3. 目標網站是否允許訪問`;
     } finally {
         isProcessing = false;
         processQRBtn.disabled = false;

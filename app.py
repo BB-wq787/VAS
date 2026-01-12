@@ -399,23 +399,31 @@ def extract_batch_from_url():
         import requests
         from urllib.parse import urlparse
 
+        print(f"收到URL请求: {url}")  # 调试日志
+
         # Basic URL validation
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
             return jsonify({'error': 'Invalid URL format'}), 400
+
+        print(f"URL解析成功: scheme={parsed.scheme}, netloc={parsed.netloc}")  # 调试日志
 
         # Fetch the URL content
         response = requests.get(url, timeout=10, headers={
             'User-Agent': 'VAS-Batch-Identifier/1.0'
         })
 
+        print(f"HTTP响应状态: {response.status_code}")  # 调试日志
+
         if response.status_code != 200:
             return jsonify({'error': f'HTTP {response.status_code}: {response.reason}'}), 400
 
         content = response.text
+        print(f"页面内容长度: {len(content)} 字符")  # 调试日志
 
         # Extract batch number server-side
         batch_number = extract_batch_from_text(content)
+        print(f"提取的批次号: {batch_number}")  # 调试日志
 
         # Get product info if batch found
         product_info = None
