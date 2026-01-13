@@ -16,15 +16,6 @@
         </nav>
 
         <div class="scanner-section">
-            <!-- Mode Selection -->
-            <div class="mode-selection">
-                <h3>選擇識別方式：</h3>
-                <div class="mode-buttons">
-                    <button id="ocrMode" class="mode-btn active">OCR文字識別</button>
-                    <button id="qrMode" class="mode-btn">QR碼掃描</button>
-                </div>
-            </div>
-
             <div class="video-container">
                 <video id="video" autoplay playsinline></video>
                 <canvas id="canvas" style="display: none;"></canvas>
@@ -35,24 +26,11 @@
                 <p>請將貨物批次號對準畫面，點擊拍攝按鈕進行識別</p>
             </div>
 
-            <div id="qrInfo" class="ocr-info" style="display: none;">
-                <p>使用 <strong>掃描槍</strong> 掃描QR碼</p>
-                <p>請將QR碼內容（網址）輸入下方輸入框，系統將自動訪問網址並提取批次號</p>
-                <div class="qr-input-container">
-                    <label for="qrUrlInput">QR碼網址：</label>
-                    <input type="url" id="qrUrlInput" placeholder="掃描QR碼或手動輸入網址" style="width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
-                </div>
-            </div>
-
             <div class="controls">
                 <div id="ocrControls">
                     <button id="startCamera" class="btn btn-primary">啟動攝像頭</button>
                     <button id="capture" class="btn btn-success" disabled>拍攝並識別</button>
                     <button id="stopCamera" class="btn btn-secondary" disabled>停止攝像頭</button>
-                </div>
-                <div id="qrControls" style="display: none;">
-                    <button id="processQR" class="btn btn-success">處理QR碼</button>
-                    <button id="clearQR" class="btn btn-secondary">清除</button>
                 </div>
             </div>
         </div>

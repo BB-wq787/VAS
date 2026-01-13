@@ -46,7 +46,7 @@ def get_all_products():
     """Get all products with their batches"""
     db = get_db()
     cursor = db.execute('''
-        SELECT p.id, p.name, p.code, b.id as batch_id, b.batch_number, b.unique_code
+        SELECT p.id, p.name, p.code, b.id as batch_id, b.batch_number, b.quantity
         FROM products p
         LEFT JOIN batches b ON p.id = b.product_id
         ORDER BY p.name, b.batch_number
@@ -63,12 +63,22 @@ def get_product_by_batch(batch_number):
     """Get product by batch number"""
     db = get_db()
     cursor = db.execute('''
-        SELECT p.*, b.batch_number, b.unique_code
+        SELECT p.id as product_id, p.name, p.code, b.id as batch_id, b.batch_number, b.quantity
         FROM products p
         JOIN batches b ON p.id = b.product_id
         WHERE b.batch_number = ?
     ''', (batch_number,))
-    return cursor.fetchone()
+    row = cursor.fetchone()
+    if row:
+        return {
+            'product_id': row[0],
+            'name': row[1],
+            'code': row[2],
+            'batch_id': row[3],
+            'batch_number': row[4],
+            'quantity': row[5]
+        }
+    return None
 
 def add_product(name):
     """Add a new product and assign a code"""
@@ -105,7 +115,7 @@ def add_product(name):
         else:
             raise ValueError('Database integrity error')
 
-def add_batch_to_product(product_id, batch_number):
+def add_batch_to_product(product_id, batch_number, quantity=1):
     """Add a batch to an existing product"""
     try:
         db = get_db()
@@ -116,19 +126,12 @@ def add_batch_to_product(product_id, batch_number):
         if not product:
             return None
 
-        # Count existing batches for this product
-        cursor = db.execute('SELECT COUNT(*) as count FROM batches WHERE product_id = ?', (product_id,))
-        count = cursor.fetchone()['count']
-
-        # Generate unique code (e.g., A1, A2, B1, B2)
-        unique_code = f"{product['code']}{count + 1}"
-
-        db.execute('INSERT INTO batches (product_id, batch_number, unique_code) VALUES (?, ?, ?)',
-                  (product_id, batch_number, unique_code))
+        db.execute('INSERT INTO batches (product_id, batch_number, quantity) VALUES (?, ?, ?)',
+                  (product_id, batch_number, quantity))
         db.commit()
 
         # Get the inserted batch
-        cursor = db.execute('SELECT * FROM batches WHERE unique_code = ?', (unique_code,))
+        cursor = db.execute('SELECT * FROM batches WHERE batch_number = ?', (batch_number,))
         return cursor.fetchone()
     except sqlite3.IntegrityError:
         return None  # Batch number already exists
@@ -141,32 +144,26 @@ def update_product(product_id, name):
     db.commit()
     return db.total_changes > 0
 
-def update_batch(batch_id, batch_number):
-    """Update a batch number"""
+def update_batch(batch_id, batch_number=None, quantity=None):
+    """Update a batch number and/or quantity"""
     try:
         db = get_db()
-        # Get product code for unique code generation
-        cursor = db.execute('''
-            SELECT p.code FROM products p
-            JOIN batches b ON p.id = b.product_id
-            WHERE b.id = ?
-        ''', (batch_id,))
-        product = cursor.fetchone()
-        if not product:
+        if batch_number is not None and quantity is not None:
+            # Update both
+            db.execute('UPDATE batches SET batch_number = ?, quantity = ? WHERE id = ?',
+                      (batch_number, quantity, batch_id))
+        elif batch_number is not None:
+            # Update only batch_number
+            db.execute('UPDATE batches SET batch_number = ? WHERE id = ?',
+                      (batch_number, batch_id))
+        elif quantity is not None:
+            # Update only quantity
+            db.execute('UPDATE batches SET quantity = ? WHERE id = ?',
+                      (quantity, batch_id))
+        else:
+            # Nothing to update
             return False
 
-        # Get batch position for unique code
-        cursor = db.execute('''
-            SELECT COUNT(*) as position FROM batches
-            WHERE product_id = (SELECT product_id FROM batches WHERE id = ?)
-            AND id <= ?
-        ''', (batch_id, batch_id))
-        position = cursor.fetchone()['position']
-
-        unique_code = f"{product['code']}{position}"
-
-        db.execute('UPDATE batches SET batch_number = ?, unique_code = ? WHERE id = ?',
-                  (batch_number, unique_code, batch_id))
         db.commit()
         return db.total_changes > 0
     except sqlite3.IntegrityError:
@@ -216,7 +213,7 @@ def get_products():
         'code': p['code'],
         'batch_id': p['batch_id'],
         'batch_number': p['batch_number'],
-        'unique_code': p['unique_code']
+        'quantity': p['quantity'] if p['quantity'] is not None else 0
     } for p in products_data])  # Include all products, even those without batches
 
 @app.route('/api/products', methods=['POST'])
@@ -253,7 +250,7 @@ def add_product_api():
             'code': product['code'],
             'batch_id': batch['id'],
             'batch_number': batch['batch_number'],
-            'unique_code': batch['unique_code']
+            'quantity': batch['quantity']
         })
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -279,7 +276,7 @@ def add_batch_api():
         'id': batch['id'],
         'product_id': batch['product_id'],
         'batch_number': batch['batch_number'],
-        'unique_code': batch['unique_code']
+        'quantity': batch['quantity']
     })
 
 @app.route('/api/products/<int:product_id>', methods=['PUT'])
@@ -298,19 +295,30 @@ def update_product_api(product_id):
 
 @app.route('/api/batches/<int:batch_id>', methods=['PUT'])
 def update_batch_api(batch_id):
-    """Update a batch number"""
+    """Update a batch number and/or quantity"""
     data = request.get_json()
 
-    if not data or not data.get('batch_number'):
-        return jsonify({'error': 'Batch number is required'}), 400
+    if not data:
+        return jsonify({'error': 'Request data is required'}), 400
 
-    # Validate batch number format
-    if not data['batch_number'].startswith('5') or len(data['batch_number']) != 10:
+    # Check if we have batch_number or quantity
+    batch_number = data.get('batch_number')
+    quantity = data.get('quantity')
+
+    if not batch_number and quantity is None:
+        return jsonify({'error': 'Either batch_number or quantity must be provided'}), 400
+
+    # Validate batch number format if provided
+    if batch_number and (not batch_number.startswith('5') or len(batch_number) != 10):
         return jsonify({'error': 'Batch number must be 10 characters starting with 5'}), 400
 
-    success = update_batch(batch_id, data['batch_number'])
+    # Validate quantity if provided
+    if quantity is not None and (not isinstance(quantity, int) or quantity < 0):
+        return jsonify({'error': 'Quantity must be a non-negative integer'}), 400
+
+    success = update_batch(batch_id, batch_number, quantity)
     if not success:
-        return jsonify({'error': 'Batch number already exists or batch not found'}), 400
+        return jsonify({'error': 'Batch update failed'}), 400
 
     return jsonify({'message': 'Batch updated successfully'})
 
@@ -341,8 +349,9 @@ def search_product(batch_number):
             'found': True,
             'name': product['name'],
             'batch_number': product['batch_number'],
-            'unique_code': product['unique_code'],
-            'product_code': product['code']
+            'product_code': product['code'],
+            'quantity': product['quantity'],
+            'batch_id': product['batch_id']
         })
     else:
         return jsonify({
@@ -491,7 +500,7 @@ def get_product_info_by_batch(batch_number):
                 'name': product['name'],
                 'batch_number': product['batch_number'],
                 'product_code': product['code'],
-                'unique_code': product['unique_code']
+                'quantity': product['quantity']
             }
         else:
             return {
@@ -514,4 +523,4 @@ if __name__ == "__main__":
     print("Database initialized successfully")
 
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)  

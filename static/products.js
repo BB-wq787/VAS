@@ -126,7 +126,7 @@ function filterProducts(products) {
             productGroups[item.id].batches.push({
                 id: item.batch_id,
                 batch_number: item.batch_number,
-                unique_code: item.unique_code
+                quantity: item.quantity
             });
         }
     });
@@ -145,10 +145,12 @@ function filterProducts(products) {
 
         // Filter by batch number (check if any batch matches)
         if (batchFilter) {
-            const hasMatchingBatch = product.batches.some(batch =>
+            // Filter batches that match the batch number filter
+            product.batches = product.batches.filter(batch =>
                 batch.batch_number.toLowerCase().includes(batchFilter)
             );
-            if (!hasMatchingBatch) {
+            // If no batches match, exclude the product
+            if (product.batches.length === 0) {
                 return false;
             }
         }
@@ -182,7 +184,7 @@ function filterProducts(products) {
                 code: product.code,
                 batch_id: batch.id,
                 batch_number: batch.batch_number,
-                unique_code: batch.unique_code
+                quantity: batch.quantity
             });
         });
     });
@@ -213,15 +215,18 @@ function renderProductsTable(products) {
                 id: item.id,
                 name: item.name,
                 code: item.code,
-                batches: []
+                batches: [],
+                totalQuantity: 0
             };
         }
         if (item.batch_id) {
+            const quantity = item.quantity || 1;
             productGroups[item.id].batches.push({
                 id: item.batch_id,
                 batch_number: item.batch_number,
-                unique_code: item.unique_code
+                quantity: quantity
             });
+            productGroups[item.id].totalQuantity += quantity;
         }
     });
 
@@ -231,26 +236,27 @@ function renderProductsTable(products) {
         rows.push(`
             <tr class="product-header">
                 <td><strong>${escapeHtml(product.name)}</strong></td>
-                <td>${escapeHtml(product.code)}</td>
-                <td colspan="2" style="text-align: center; color: #666;">${product.batches.length} 個批次</td>
-                <td>
-                    <button class="btn btn-small" onclick="editProduct(${product.id}, '${escapeHtml(product.name)}')">編輯產品</button>
-                    <button class="btn btn-danger btn-small" onclick="deleteProduct(${product.id}, '${escapeHtml(product.name)}')">刪除產品</button>
+                <td style="text-align: center; font-weight: bold;">${escapeHtml(product.code)}</td>
+                <td></td>
+                <td style="text-align: center; font-weight: bold; color: #28a745;">${product.totalQuantity}</td>
+                <td style="text-align: center;">
+                    <button class="btn btn-small" onclick="editProduct(${product.id}, '${escapeHtml(product.name)}')" style="padding: 2px 6px; font-size: 11px;">編輯</button>
+                    <button class="btn btn-danger btn-small" onclick="deleteProduct(${product.id}, '${escapeHtml(product.name)}')" style="padding: 2px 6px; font-size: 11px;">刪除</button>
                 </td>
             </tr>
         `);
 
         // Batch rows
-        product.batches.forEach(batch => {
+        product.batches.forEach((batch) => {
             rows.push(`
                 <tr class="batch-row">
                     <td style="padding-left: 30px; color: #666;">└─ ${escapeHtml(product.name)}</td>
-                    <td>${escapeHtml(product.code)}</td>
+                    <td style="text-align: center;">${escapeHtml(product.code)}</td>
                     <td>${escapeHtml(batch.batch_number)}</td>
-                    <td><strong>${escapeHtml(batch.unique_code)}</strong></td>
-                    <td>
-                        <button class="btn btn-small" onclick="editBatch(${batch.id}, '${escapeHtml(batch.batch_number)}')">編輯批次</button>
-                        <button class="btn btn-danger btn-small" onclick="deleteBatch(${batch.id}, '${escapeHtml(batch.batch_number)}')">刪除批次</button>
+                    <td style="text-align: center; color: #007bff; font-weight: bold;">${batch.quantity}</td>
+                    <td style="text-align: center;">
+                        <button class="btn btn-small" onclick="editBatch(${batch.id}, '${escapeHtml(batch.batch_number)}')" style="padding: 1px 4px; font-size: 10px;">編輯</button>
+                        <button class="btn btn-danger btn-small" onclick="deleteBatch(${batch.id}, '${escapeHtml(batch.batch_number)}')" style="padding: 1px 4px; font-size: 10px;">刪除</button>
                     </td>
                 </tr>
             `);
@@ -261,8 +267,9 @@ function renderProductsTable(products) {
             rows.push(`
                 <tr class="batch-row">
                     <td style="padding-left: 30px; color: #999;">└─ 尚未添加批次</td>
-                    <td>${escapeHtml(product.code)}</td>
-                    <td colspan="2">-</td>
+                    <td style="text-align: center;">${escapeHtml(product.code)}</td>
+                    <td>-</td>
+                    <td style="text-align: center; color: #6c757d;">0</td>
                     <td></td>
                 </tr>
             `);
@@ -307,8 +314,9 @@ function closeEditProductModal() {
     editProductForm.reset();
 }
 
-function openEditBatchModal(batchId, batchNumber) {
+function openEditBatchModal(batchId, batchNumber, batchQuantity) {
     document.getElementById('editBatchNumber').value = batchNumber;
+    document.getElementById('editBatchQuantity').value = batchQuantity;
     currentEditingId = batchId;
     editBatchModal.style.display = 'block';
 }
@@ -354,7 +362,8 @@ async function handleProductFormSubmit(e) {
     const formData = new FormData(productForm);
     const productData = {
         name: formData.get('productName').trim(),
-        batch_number: formData.get('productBatchNumber').trim()
+        batch_number: formData.get('productBatchNumber').trim(),
+        quantity: parseInt(formData.get('productQuantity')) || 1
     };
 
     if (!productData.name) {
@@ -402,7 +411,8 @@ async function handleBatchFormSubmit(e) {
     const formData = new FormData(batchForm);
     const batchData = {
         product_id: parseInt(formData.get('batchProductId')),
-        batch_number: formData.get('batchNumber').trim()
+        batch_number: formData.get('batchNumber').trim(),
+        quantity: parseInt(formData.get('batchQuantity')) || 1
     };
 
     if (!batchData.product_id || !batchData.batch_number) {
@@ -480,7 +490,8 @@ async function handleEditBatchFormSubmit(e) {
 
     const formData = new FormData(editBatchForm);
     const batchData = {
-        batch_number: formData.get('editBatchNumber').trim()
+        batch_number: formData.get('editBatchNumber').trim(),
+        quantity: parseInt(formData.get('editBatchQuantity')) || 1
     };
 
     if (!batchData.batch_number) {
@@ -524,7 +535,18 @@ function editProduct(productId, productName) {
 
 // Edit batch
 function editBatch(batchId, batchNumber) {
-    openEditBatchModal(batchId, batchNumber);
+    // Convert batchId to number to ensure type matching
+    const numericBatchId = parseInt(batchId, 10);
+
+    // Find the batch quantity from productsData
+    let batchQuantity = 1; // default
+    for (const item of productsData) {
+        if (parseInt(item.batch_id, 10) === numericBatchId) {
+            batchQuantity = item.quantity || 1;
+            break;
+        }
+    }
+    openEditBatchModal(numericBatchId, batchNumber, batchQuantity);
 }
 
 // Delete product

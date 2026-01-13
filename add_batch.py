@@ -21,15 +21,15 @@ def main():
             result = add_batch_to_product(product_id, batch_number)
 
             if result:
-                print('✅ 成功添加批次號到資料庫!')
+                print('成功添加批次號到資料庫!')
                 print(f'產品ID: {result["product_id"]}')
                 print(f'批次號: {result["batch_number"]}')
                 print(f'唯一編號: {result["unique_code"]}')
             else:
-                print('❌ 添加批次號失敗 - 批次號可能已存在')
+                print('添加批次號失敗 - 批次號可能已存在')
 
     except Exception as e:
-        print(f'❌ 錯誤: {e}')
+        print(f'錯誤: {e}')
 
 if __name__ == "__main__":
     main()

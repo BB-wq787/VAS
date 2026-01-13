@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端测试页面</title>
+</head>
+<body>
+    <h1>URL批次号提取测试</h1>
+
+    <div>
+        <label for="testUrl">测试URL：</label>
+        <input type="text" id="testUrl" value="http://nebl.cn/02130832411190283934" style="width: 400px;">
+        <button onclick="testAPI()">测试API</button>
+    </div>
+
+    <div id="status" style="margin: 20px 0; padding: 10px; border: 1px solid #ccc;"></div>
+
+    <div id="result" style="margin: 20px 0; padding: 10px; border: 1px solid #ccc; background: #f9f9f9;"></div>
+
+    <textarea id="rawText" rows="10" cols="80" placeholder="API响应内容"></textarea>
+
+    <script>
+        async function testAPI() {
+            const url = document.getElementById('testUrl').value.trim();
+            const statusDiv = document.getElementById('status');
+            const resultDiv = document.getElementById('result');
+            const rawTextArea = document.getElementById('rawText');
+
+            if (!url) {
+                statusDiv.textContent = '請輸入URL';
+                statusDiv.style.color = 'red';
+                return;
+            }
+
+            statusDiv.textContent = '正在測試API...';
+            statusDiv.style.color = 'blue';
+
+            try {
+                console.log('開始測試URL:', url);
+
+                const apiUrl = '/api/extract_batch_from_url?url=' + encodeURIComponent(url);
+                console.log('API URL:', apiUrl);
+
+                const response = await fetch(apiUrl);
+                console.log('API響應狀態:', response.status);
+
+                if (!response.ok) {
+                    throw new Error('API請求失敗: ' + response.status);
+                }
+
+                const data = await response.json();
+                console.log('API返回數據:', data);
+
+                // 顯示結果
+                if (data.batch_found) {
+                    resultDiv.innerHTML = `
+                        <div style="color: green;">
+                            <strong>批次號找到: ${data.batch_number}</strong>
+                        </div>
+                        <div>內容長度: ${data.content_length} 字符</div>
+                    `;
+
+                    if (data.product_info && data.product_info.found) {
+                        resultDiv.innerHTML += `
+                            <div>產品名稱: ${data.product_info.name}</div>
+                            <div>產品代碼: ${data.product_info.product_code}</div>
+                        `;
+                    } else {
+                        resultDiv.innerHTML += '<div style="color: orange;">此批次號尚未在資料庫中註冊</div>';
+                    }
+
+                    statusDiv.textContent = '測試成功！';
+                    statusDiv.style.color = 'green';
+                } else {
+                    resultDiv.innerHTML = '<div style="color: red;">未找到批次號</div>';
+                    statusDiv.textContent = '未找到批次號';
+                    statusDiv.style.color = 'orange';
+                }
+
+                rawTextArea.value = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                console.error('測試失敗:', error);
+                statusDiv.textContent = '測試失敗: ' + error.message;
+                statusDiv.style.color = 'red';
+                resultDiv.innerHTML = '';
+                rawTextArea.value = '錯誤: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
+

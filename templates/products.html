@@ -17,7 +17,7 @@
 
         <div class="products-section">
             <div class="product-controls">
-                <button id="addProductBtn" class="btn btn-primary">➕ 新增產品</button>
+                <button id="addProductBtn" class="btn btn-primary">新增產品</button>
                 <button id="addBatchBtn" class="btn btn-success">新增批次</button>
                 <div id="message" class="message" style="display: none;"></div>
             </div>
@@ -58,7 +58,7 @@
                             <th>產品名稱</th>
                             <th>產品代碼</th>
                             <th>批次號</th>
-                            <th>唯一編號</th>
+                            <th>數量</th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -148,6 +148,10 @@
                         <label for="editBatchNumber">批次號：</label>
                         <input type="text" id="editBatchNumber" name="editBatchNumber" required
                                pattern="5[A-Z0-9]{9}" title="批次號必須是以5開頭的10個字符">
+                    </div>
+                    <div class="form-group">
+                        <label for="editBatchQuantity">數量：</label>
+                        <input type="number" id="editBatchQuantity" name="editBatchQuantity" min="0" value="1" required>
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">儲存</button>

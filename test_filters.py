@@ -12,10 +12,10 @@ def test_api_response():
     response = requests.get('http://localhost:5000/api/products', timeout=5)
     if response.status_code == 200:
         data = response.json()
-        print(f"✅ API返回 {len(data)} 条记录")
+        print(f"API返回 {len(data)} 条记录")
         return data
     else:
-        print("❌ API错误")
+        print("API错误")
         return None
 
 def test_page_load():
@@ -34,9 +34,9 @@ def test_page_load():
         ]
         for check_text, description in checks:
             if check_text in content:
-                print(f"✅ {description} 已添加")
+                print(f"{description} 已添加")
             else:
-                print(f"❌ {description} 缺失")
+                print(f"{description} 缺失")
         return True
     else:
         print("❌ 页面加载失败")
@@ -81,3 +81,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

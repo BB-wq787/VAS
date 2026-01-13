@@ -24,17 +24,17 @@ def init_database():
                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
                     product_id INTEGER NOT NULL,
                     batch_number TEXT UNIQUE NOT NULL,
-                    unique_code TEXT UNIQUE NOT NULL,
+                    quantity INTEGER DEFAULT 1,
                     FOREIGN KEY (product_id) REFERENCES products (id))''')
 
-    print("✅ 資料庫表已建立")
+    print("資料庫表已建立")
 
     # Check if we already have data
     cursor = conn.execute('SELECT COUNT(*) FROM products')
     count = cursor.fetchone()[0]
 
     if count > 0:
-        print("ℹ️ 資料庫中已有數據，跳過初始化")
+        print("資料庫中已有數據，跳過初始化")
         conn.close()
         return
 
@@ -66,27 +66,19 @@ def init_database():
                                 (products_added[product_name],))
             product_id = cursor.fetchone()[0]
 
-            # Count existing batches for this product
-            cursor = conn.execute('SELECT COUNT(*) FROM batches WHERE product_id = ?',
-                                (product_id,))
-            count = cursor.fetchone()[0]
-
-            # Generate unique code
-            unique_code = f"{products_added[product_name]}{count + 1}"
-
             # Add batch
-            conn.execute('INSERT INTO batches (product_id, batch_number, unique_code) VALUES (?, ?, ?)',
-                       (product_id, batch_number, unique_code))
+            conn.execute('INSERT INTO batches (product_id, batch_number) VALUES (?, ?)',
+                       (product_id, batch_number))
             batch_count += 1
 
         conn.commit()
-        print(f"✅ 已添加 {len(products_added)} 個示例產品和 {batch_count} 個批次")
+        print(f"已添加 {len(products_added)} 個示例產品和 {batch_count} 個批次")
     except Exception as e:
         conn.rollback()
-        print(f"❌ 添加示例數據失敗: {e}")
+        print(f"添加示例數據失敗: {e}")
     finally:
         conn.close()
 
 if __name__ == "__main__":
     init_database()
-    print("🎉 資料庫初始化完成！")
+    print("資料庫初始化完成！")

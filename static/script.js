@@ -4,23 +4,14 @@ let canvas = document.getElementById('canvas');
 let ctx = canvas.getContext('2d');
 let stream = null;
 let isProcessing = false;
-let currentMode = 'ocr'; // 'ocr' or 'qr'
 
 // DOM elements
 const startCameraBtn = document.getElementById('startCamera');
 const captureBtn = document.getElementById('capture');
 const stopCameraBtn = document.getElementById('stopCamera');
-const ocrModeBtn = document.getElementById('ocrMode');
-const qrModeBtn = document.getElementById('qrMode');
-const ocrInfoDiv = document.getElementById('ocrInfo');
-const qrInfoDiv = document.getElementById('qrInfo');
 const statusDiv = document.getElementById('status');
 const batchResultDiv = document.getElementById('batchResult');
 const rawTextArea = document.getElementById('rawText');
-const rawTextTitle = document.getElementById('rawTextTitle');
-const qrUrlInput = document.getElementById('qrUrlInput');
-const processQRBtn = document.getElementById('processQR');
-const clearQRBtn = document.getElementById('clearQR');
 
 // Debug DOM elements on page load
 console.log('DOM Elements loaded:');
@@ -31,410 +22,16 @@ console.log('rawTextArea:', rawTextArea);
 // Initialize Tesseract worker
 let worker = null;
 
-// Mode switching functions
-function switchToMode(mode) {
-    if (currentMode === mode) return;
-
-    currentMode = mode;
-
-    // Update button states
-    ocrModeBtn.classList.toggle('active', mode === 'ocr');
-    qrModeBtn.classList.toggle('active', mode === 'qr');
-
-    // Update UI visibility
-    ocrInfoDiv.style.display = mode === 'ocr' ? 'block' : 'none';
-    qrInfoDiv.style.display = mode === 'qr' ? 'block' : 'none';
-    document.getElementById('ocrControls').style.display = mode === 'ocr' ? 'block' : 'none';
-    document.getElementById('qrControls').style.display = mode === 'qr' ? 'block' : 'none';
-    rawTextTitle.textContent = mode === 'ocr' ? '原始識別文字：' : '網址內容：';
-
-    // Stop any ongoing scanning
-    stopScanning();
-
-    // Update status
-    if (stream) {
-        statusDiv.textContent = mode === 'ocr'
-            ? 'OCR模式已啟動，請將貨物對準畫面並點擊拍攝按鈕'
-            : 'QR碼模式已啟動，請將二維碼對準畫面，系統將自動掃描';
-        statusDiv.className = 'status success';
-    } else {
-        statusDiv.textContent = mode === 'ocr'
-            ? '請先啟動攝像頭'
-            : '請先啟動攝像頭以開始QR碼掃描';
-        statusDiv.className = 'status';
-    }
-}
-
 function stopScanning() {
-    // No QR scanner to stop in the new implementation
+    // Stop any ongoing processing
     isProcessing = false;
-    captureBtn.disabled = currentMode === 'ocr' && stream;
-}
-
-// QR Code processing functions
-async function processQRUrl() {
-    const url = qrUrlInput.value.trim();
-    if (!url) {
-        statusDiv.textContent = '請輸入QR碼網址';
-        statusDiv.className = 'status error';
-        return;
-    }
-
-    if (isProcessing) return;
-
-    isProcessing = true;
-    processQRBtn.disabled = true;
-    statusDiv.textContent = '正在訪問網址並提取批次號...';
-    statusDiv.className = 'status processing';
-
-    try {
-        console.log('开始处理URL:', url);
-        // Fetch URL and extract batch server-side (optimized)
-        const response = await fetch('/api/extract_batch_from_url?url=' + encodeURIComponent(url));
-        console.log('API响应状态:', response.status);
-
-        if (!response.ok) {
-            throw new Error('無法訪問網址：' + response.status);
-        }
-
-        const data = await response.json();
-        console.log('API返回数据:', data);
-        await processQROptimizedResult(data);
-
-    } catch (error) {
-        console.error('Error processing QR URL:', error);
-        statusDiv.textContent = '處理失敗：' + error.message;
-        statusDiv.className = 'status error';
-        batchResultDiv.innerHTML = '<div style="color: #dc3545;">處理失敗，請檢查：<br>• URL格式是否正確<br>• 網路連線是否正常<br>• 目標網站是否可訪問</div>';
-        rawTextArea.value = `錯誤詳情：\n${error.message}\n\n請檢查：\n1. URL是否正確\n2. 網路連線是否正常\n3. 目標網站是否允許訪問`;
-    } finally {
-        isProcessing = false;
-        processQRBtn.disabled = false;
-    }
-}
-
-function clearQRInput() {
-    qrUrlInput.value = '';
-    batchResultDiv.innerHTML = '';
-    rawTextArea.value = '';
-    statusDiv.textContent = '已清除輸入，請重新掃描QR碼';
-    statusDiv.className = 'status';
-}
-
-async function processQROptimizedResult(data) {
-    console.log('processQROptimizedResult called with data:', data);
-    console.log('DOM elements exist check:');
-    console.log('- statusDiv exists:', !!statusDiv);
-    console.log('- batchResultDiv exists:', !!batchResultDiv);
-    console.log('- rawTextArea exists:', !!rawTextArea);
-
-    // Additional check - try to get elements again in case they were not loaded initially
-    const currentStatusDiv = document.getElementById('status');
-    const currentBatchResultDiv = document.getElementById('batchResult');
-    const currentRawTextArea = document.getElementById('rawText');
-
-    console.log('Fresh DOM element lookup:');
-    console.log('- statusDiv (fresh):', currentStatusDiv);
-    console.log('- batchResultDiv (fresh):', currentBatchResultDiv);
-    console.log('- rawTextArea (fresh):', currentRawTextArea);
-
-    if (isProcessing) {
-        console.log('Still processing, returning...');
-        return;
-    }
-
-    isProcessing = true;
-    if (currentStatusDiv) {
-        currentStatusDiv.textContent = '處理QR碼結果...';
-        currentStatusDiv.className = 'status processing';
-    } else {
-        console.error('statusDiv not found!');
-    }
-
-    try {
-        console.log('data.batch_found:', data.batch_found);
-
-        if (data.batch_found) {
-            const batchNumber = data.batch_number;
-            const productInfo = data.product_info;
-
-            console.log('batchNumber:', batchNumber);
-            console.log('productInfo:', productInfo);
-
-            if (productInfo && productInfo.found) {
-                const htmlContent = `
-                    <div style="margin-bottom: 10px;">
-                        <strong>批次號：</strong>${batchNumber}
-                    </div>
-                    <div style="color: #28a745; margin-bottom: 10px;">
-                        <strong>產品名稱：</strong>${productInfo.name}
-                    </div>
-                    <div style="color: #007bff; margin-bottom: 10px;">
-                        <strong>唯一編號：</strong>${productInfo.unique_code}
-                    </div>
-                    <div style="color: #6c757d;">
-                        <strong>產品代碼：</strong>${productInfo.product_code}
-                    </div>
-                `;
-                console.log('Setting batchResultDiv HTML:', htmlContent);
-                if (currentBatchResultDiv) {
-                    currentBatchResultDiv.innerHTML = htmlContent;
-                    console.log('Successfully set batchResultDiv HTML');
-                } else {
-                    console.error('currentBatchResultDiv is null, cannot set HTML');
-                }
-            } else {
-                const htmlContent = `
-                    <div>
-                        <strong>批次號：</strong>${batchNumber}
-                    </div>
-                    <div style="color: #ffc107; margin-top: 5px;">
-                        此批次號尚未在產品資料庫中註冊
-                    </div>
-                `;
-                console.log('Setting batchResultDiv HTML (no product):', htmlContent);
-                if (currentBatchResultDiv) {
-                    currentBatchResultDiv.innerHTML = htmlContent;
-                    console.log('Successfully set batchResultDiv HTML (no product)');
-                } else {
-                    console.error('currentBatchResultDiv is null, cannot set HTML (no product)');
-                }
-            }
-
-            console.log('Setting batchResultDiv color and status');
-            if (currentBatchResultDiv) {
-                currentBatchResultDiv.style.color = '#155724';
-                console.log('Successfully set batchResultDiv color');
-            }
-            if (currentStatusDiv) {
-                currentStatusDiv.textContent = '批次號識別成功！';
-                currentStatusDiv.className = 'status success';
-                console.log('Successfully set statusDiv text and class');
-            }
-
-            // Display content preview in raw text area
-            if (currentRawTextArea) {
-                currentRawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 提取的批次號 ---\n\n${batchNumber}`;
-                console.log('Successfully set rawTextArea value');
-            } else {
-                console.error('currentRawTextArea is null, cannot set value');
-            }
-
-        } else {
-            console.log('No batch found in data');
-            console.log('Setting batchResultDiv for no batch found');
-            if (currentBatchResultDiv) {
-                currentBatchResultDiv.innerHTML = '<div>網址內容中未找到有效的批次號</div>';
-                currentBatchResultDiv.style.color = '#721c24';
-                console.log('Successfully set batchResultDiv for no batch found');
-            }
-            if (currentStatusDiv) {
-                currentStatusDiv.textContent = '處理完成，但未找到有效的批次號';
-                currentStatusDiv.className = 'status error';
-            }
-            if (currentRawTextArea) {
-                currentRawTextArea.value = `--- 網址內容預覽 ---\n\n${data.content_preview}\n\n--- 處理結果 ---\n\n未找到有效的批次號`;
-            }
-        }
-
-    } catch (error) {
-        console.error('Error processing optimized QR result:', error);
-        console.log('Error details:', error);
-        if (currentStatusDiv) {
-            currentStatusDiv.textContent = '處理QR碼時發生錯誤：' + error.message;
-            currentStatusDiv.className = 'status error';
-        }
-        if (currentBatchResultDiv) {
-            currentBatchResultDiv.textContent = '';
-        }
-        if (currentRawTextArea) {
-            currentRawTextArea.value = '';
-        }
-    } finally {
-        console.log('processQROptimizedResult finished, setting isProcessing to false');
-        isProcessing = false;
-    }
+    captureBtn.disabled = !stream;
 }
 
 
-async function processQRResult(qrData) {
-    if (isProcessing) return;
 
-    isProcessing = true;
-    statusDiv.textContent = '處理QR碼內容...';
-    statusDiv.className = 'status processing';
 
-    try {
-        // Extract batch number from QR data
-        const batchResult = extractBatchFromQRContent(qrData);
 
-        if (batchResult.found) {
-            // Search for product information
-            const productInfo = await searchProductByBatch(batchResult.batch);
-
-            if (productInfo.found) {
-                batchResultDiv.innerHTML = `
-                    <div style="margin-bottom: 10px;">
-                        <strong>批次號：</strong>${batchResult.batch}
-                    </div>
-                    <div style="color: #28a745; margin-bottom: 10px;">
-                        <strong>產品名稱：</strong>${productInfo.name}
-                    </div>
-                    <div style="color: #007bff; margin-bottom: 10px;">
-                        <strong>唯一編號：</strong>${productInfo.unique_code}
-                    </div>
-                    <div style="color: #6c757d;">
-                        <strong>產品代碼：</strong>${productInfo.product_code}
-                    </div>
-                `;
-            } else {
-                batchResultDiv.innerHTML = `
-                    <div>
-                        <strong>批次號：</strong>${batchResult.batch}
-                    </div>
-                    <div style="color: #ffc107; margin-top: 5px;">
-                        此批次號尚未在產品資料庫中註冊
-                    </div>
-                `;
-            }
-
-            batchResultDiv.style.color = '#155724';
-            statusDiv.textContent = '批次號識別成功！';
-            statusDiv.className = 'status success';
-
-            // Display QR content in raw text area
-            rawTextArea.value = `--- QR碼內容 ---\n\n${qrData}\n\n--- 提取的批次號 ---\n\n${batchResult.batch}`;
-
-        } else {
-            batchResultDiv.innerHTML = '<div>QR碼內容中未找到有效的批次號</div>';
-            batchResultDiv.style.color = '#721c24';
-            statusDiv.textContent = 'QR碼掃描完成，但未找到有效的批次號';
-            statusDiv.className = 'status error';
-            rawTextArea.value = `--- QR碼內容 ---\n\n${qrData}\n\n--- 處理結果 ---\n\n未找到有效的批次號`;
-        }
-
-    } catch (error) {
-        console.error('Error processing QR result:', error);
-        statusDiv.textContent = '處理QR碼時發生錯誤：' + error.message;
-        statusDiv.className = 'status error';
-        batchResultDiv.textContent = '';
-        rawTextArea.value = '';
-    } finally {
-        isProcessing = false;
-    }
-}
-
-function extractBatchFromQRContent(content) {
-    // For URL content, we look for batch numbers in the HTML/text content
-    const cleanContent = content.toUpperCase();
-
-    console.log('Processing URL content for batch number, length:', cleanContent.length);
-
-    // Try different patterns to extract batch number from web content
-    // Pattern 1: Direct 10-character batch number starting with 5
-    const directMatches = cleanContent.match(/\b5[A-Z0-9]{9}\b/g);
-    if (directMatches && directMatches.length > 0) {
-        // Return the first valid match
-        for (const match of directMatches) {
-            if (match.length === 10 && match.startsWith('5')) {
-                console.log('Found batch via direct match:', match);
-                return { found: true, batch: match };
-            }
-        }
-    }
-
-    // Pattern 2: Look for batch numbers in HTML attributes or text content
-    // Common patterns in web pages
-    const htmlPatterns = [
-        /batch["\s]*:?\s*["']?([5][A-Z0-9]{9})["']?/gi,
-        /批次["\s]*:?\s*["']?([5][A-Z0-9]{9})["']?/gi,
-        /batch[_-]number["\s]*:?\s*["']?([5][A-Z0-9]{9})["']?/gi,
-        /data-batch=["']([5][A-Z0-9]{9})["']/gi,
-        /id=["']batch["']\s*value=["']([5][A-Z0-9]{9})["']/gi,
-    ];
-
-    for (const pattern of htmlPatterns) {
-        const match = cleanContent.match(pattern);
-        if (match && match[1]) {
-            console.log('Found batch via HTML pattern:', match[1]);
-            return { found: true, batch: match[1] };
-        }
-    }
-
-    // Pattern 3: Look for batch numbers in structured data (JSON-LD, microdata)
-    const jsonLdMatches = cleanContent.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>(.*?)<\/script>/gis);
-    if (jsonLdMatches) {
-        for (const jsonLd of jsonLdMatches) {
-            try {
-                const jsonContent = jsonLd.replace(/<script[^>]*>|<\/script>/gi, '');
-                const data = JSON.parse(jsonContent);
-                const batch = findBatchInObject(data);
-                if (batch) {
-                    console.log('Found batch in JSON-LD:', batch);
-                    return { found: true, batch: batch };
-                }
-            } catch (e) {
-                // Continue with other patterns
-            }
-        }
-    }
-
-    // Pattern 4: Look for meta tags with batch information
-    const metaMatches = cleanContent.match(/<meta[^>]*name=["']batch["'][^>]*content=["']([5][A-Z0-9]{9})["'][^>]*>/gi);
-    if (metaMatches) {
-        for (const meta of metaMatches) {
-            const contentMatch = meta.match(/content=["']([5][A-Z0-9]{9})["']/i);
-            if (contentMatch && contentMatch[1]) {
-                console.log('Found batch in meta tag:', contentMatch[1]);
-                return { found: true, batch: contentMatch[1] };
-            }
-        }
-    }
-
-    // Pattern 5: Look for batch numbers in text content, preferring those near keywords
-    const keywordPatterns = [
-        /(?:生產批次|批次號|batch\s*number|serial\s*number)[\s:]*([5][A-Z0-9]{9})\b/gi,
-        /(?:product\s*batch|batch\s*id|batch\s*code)[\s:]*([5][A-Z0-9]{9})\b/gi,
-    ];
-
-    for (const pattern of keywordPatterns) {
-        const match = cleanContent.match(pattern);
-        if (match && match[1]) {
-            console.log('Found batch near keyword:', match[1]);
-            return { found: true, batch: match[1] };
-        }
-    }
-
-    console.log('No valid batch number found in URL content');
-    return { found: false, batch: null };
-}
-
-// Helper function to recursively search for batch numbers in objects
-function findBatchInObject(obj) {
-    if (typeof obj === 'string') {
-        const match = obj.match(/\b5[A-Z0-9]{9}\b/);
-        return match ? match[0] : null;
-    }
-
-    if (typeof obj === 'object' && obj !== null) {
-        const possibleKeys = ['batch', 'batchNumber', 'batch_number', 'serialNumber', 'serial_number', '批次', '生产批次'];
-
-        for (const key of possibleKeys) {
-            if (obj[key]) {
-                const result = findBatchInObject(obj[key]);
-                if (result) return result;
-            }
-        }
-
-        // Search all properties
-        for (const key in obj) {
-            const result = findBatchInObject(obj[key]);
-            if (result) return result;
-        }
-    }
-
-    return null;
-}
 
 
 async function initTesseract() {
@@ -482,9 +79,7 @@ async function startCamera() {
         captureBtn.disabled = false;
         stopCameraBtn.disabled = false;
 
-        statusDiv.textContent = currentMode === 'ocr'
-            ? '攝像頭已啟動，請將貨物對準畫面並點擊拍攝按鈕'
-            : '攝像頭已啟動，請將二維碼對準畫面，系統將自動掃描';
+        statusDiv.textContent = '攝像頭已啟動，請將貨物對準畫面並點擊拍攝按鈕';
         statusDiv.className = 'status success';
 
     } catch (error) {
@@ -703,19 +298,75 @@ async function displayResults(results) {
                     <strong>產品名稱：</strong>${productInfo.name}
                 </div>
                 <div style="color: #007bff; margin-bottom: 10px;">
-                    <strong>唯一編號：</strong>${productInfo.unique_code}
+                    <strong>數量：</strong>${productInfo.quantity}
                 </div>
-                <div style="color: #6c757d;">
+                <div style="color: #6c757d; margin-bottom: 15px;">
                     <strong>產品代碼：</strong>${productInfo.product_code}
                 </div>
+                <button id="stockInBtn" class="btn btn-success" style="width: 100%; margin-bottom: 8px;">入庫 +1</button>
+                <div id="stockInStatus" style="font-size: 12px; color: #6c757d;"></div>
             `;
+
+            // Add event listener for stock in button
+            setTimeout(() => {
+                const stockInBtn = document.getElementById('stockInBtn');
+                const statusDiv = document.getElementById('stockInStatus');
+                if (stockInBtn) {
+                    stockInBtn.addEventListener('click', async () => {
+                        try {
+                            stockInBtn.disabled = true;
+                            stockInBtn.textContent = '處理中...';
+
+                            const response = await fetch(`/api/batches/${productInfo.batch_id}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    batch_number: results.batch,
+                                    quantity: productInfo.quantity + 1
+                                })
+                            });
+
+                            if (response.ok) {
+                                statusDiv.textContent = '入庫成功！數量已增加。';
+                                statusDiv.style.color = '#28a745';
+                                productInfo.quantity += 1;
+
+                                // Update displayed quantity
+                                const quantityDiv = stockInBtn.parentElement.querySelector('div:nth-child(3)');
+                                if (quantityDiv) {
+                                    quantityDiv.innerHTML = `<strong>數量：</strong>${productInfo.quantity}`;
+                                }
+
+                                setTimeout(() => {
+                                    statusDiv.textContent = '';
+                                }, 3000);
+                            } else {
+                                const error = await response.json();
+                                statusDiv.textContent = '入庫失敗：' + (error.error || '未知錯誤');
+                                statusDiv.style.color = '#dc3545';
+                            }
+                        } catch (error) {
+                            statusDiv.textContent = '網路錯誤，請重試';
+                            statusDiv.style.color = '#dc3545';
+                        } finally {
+                            stockInBtn.disabled = false;
+                            stockInBtn.textContent = '入庫 +1';
+                        }
+                    });
+                }
+            }, 100);
         } else {
             batchResultDiv.innerHTML = `
-                <div>
-                    <strong>批次號：</strong>${results.batch}
+                <div style="background: #d4edda; padding: 10px; border-radius: 5px; border: 2px solid #c3e6cb; margin-bottom: 8px;">
+                    <strong style="color: #155724;">批次號：</strong><span style="color: #155724;">${results.batch}</span>
                 </div>
-                <div style="color: #ffc107; margin-top: 5px;">
-                    此批次號尚未在產品資料庫中註冊
+                <div style="background: #cce5ff; padding: 10px; border-radius: 5px; border: 2px solid #99d6ff; margin-bottom: 8px;">
+                    <strong style="color: #007bff;">批次類型：</strong><span style="color: #007bff;">5開頭10位標準批次號</span>
+                </div>
+                <div style="background: #fff3cd; padding: 10px; border-radius: 5px; border: 2px solid #ffeaa7;">
+                    <strong style="color: #856404;">提示：</strong><span style="color: #856404;">此批次號有效但未在產品資料庫中註冊</span>
                 </div>
             `;
         }
@@ -747,19 +398,6 @@ startCameraBtn.addEventListener('click', startCamera);
 captureBtn.addEventListener('click', captureAndProcess);
 stopCameraBtn.addEventListener('click', stopCamera);
 
-// Mode switching event listeners
-ocrModeBtn.addEventListener('click', () => switchToMode('ocr'));
-qrModeBtn.addEventListener('click', () => switchToMode('qr'));
-
-// QR processing event listeners
-processQRBtn.addEventListener('click', processQRUrl);
-clearQRBtn.addEventListener('click', clearQRInput);
-qrUrlInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        processQRUrl();
-    }
-});
-
 
 // Handle page unload to stop camera
 window.addEventListener('beforeunload', stopCamera);
@@ -775,3 +413,44 @@ function checkLibraries() {
     console.log('Checking libraries...');
     console.log('Tesseract available:', typeof Tesseract !== 'undefined');
 }
+
+// Debug function - call this in browser console to check page state
+function debugPageState() {
+    console.log('=== PAGE STATE DEBUG ===');
+    console.log('Is processing:', isProcessing);
+
+    console.log('\nDOM Elements:');
+    console.log('- statusDiv:', statusDiv);
+    console.log('- batchResultDiv:', batchResultDiv);
+    console.log('- rawTextArea:', rawTextArea);
+
+    console.log('\nFresh element lookup:');
+    const freshStatus = document.getElementById('status');
+    const freshBatch = document.getElementById('batchResult');
+    const freshText = document.getElementById('rawText');
+    console.log('- #status:', freshStatus);
+    console.log('- #batchResult:', freshBatch);
+    console.log('- #rawText:', freshText);
+
+    console.log('\nElement content:');
+    if (freshStatus) console.log('- status text:', freshStatus.textContent);
+    if (freshBatch) console.log('- batch result HTML:', freshBatch.innerHTML);
+    if (freshText) console.log('- raw text value:', freshText.value);
+
+    console.log('\nAll elements with class batch-result:');
+    document.querySelectorAll('.batch-result').forEach((el, i) => {
+        console.log(`  ${i}:`, el, 'HTML:', el.innerHTML);
+    });
+
+    return {
+        processing: isProcessing,
+        elements: {
+            status: freshStatus,
+            batchResult: freshBatch,
+            rawText: freshText
+        }
+    };
+}
+
+// Make debug function available globally
+window.debugPageState = debugPageState;
