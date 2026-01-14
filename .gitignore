@@ -128,3 +128,4 @@ pip_upgrade.log
 # Migration scripts (usually one-time use)
 migrate_db.py
 fix_db_schema.py
+
