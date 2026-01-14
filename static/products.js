@@ -88,14 +88,22 @@ function setupEventListeners() {
 // Load products from server
 async function loadProducts() {
     try {
+        console.log('Loading products from API...');
         const response = await fetch('/api/products');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const products = await response.json();
+        console.log(`Loaded ${products.length} product items`);
 
         productsData = products;
         applyFilters();
+        console.log('Products loaded successfully');
     } catch (error) {
         console.error('Error loading products:', error);
-        showMessage('載入產品失敗', 'error');
+        showMessage(`載入產品失敗: ${error.message}`, 'error');
     }
 }
 

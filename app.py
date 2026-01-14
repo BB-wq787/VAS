@@ -5,41 +5,86 @@ from flask import Flask, render_template, jsonify, request, redirect, url_for, g
 app = Flask(__name__)
 
 # Database configuration
-DATABASE = 'products.db'
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+def get_db_engine():
+    """Determine which database engine to use"""
+    if DATABASE_URL:
+        return 'postgresql'
+    else:
+        return 'sqlite'
+
+def get_db_connection_string():
+    """Get database connection string"""
+    if DATABASE_URL:
+        return DATABASE_URL
+    else:
+        return 'products.db'
 
 def get_db():
     """Get database connection"""
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
+        if get_db_engine() == 'postgresql':
+            import psycopg2
+            import psycopg2.extras
+            db = g._database = psycopg2.connect(DATABASE_URL)
+            # PostgreSQL doesn't need row_factory, it returns dict-like objects by default
+        else:
+            db = g._database = sqlite3.connect(get_db_connection_string())
+            db.row_factory = sqlite3.Row
     return db
+
+def format_query(query, engine=None):
+    """Format query for the appropriate database engine"""
+    if engine is None:
+        engine = get_db_engine()
+    if engine == 'postgresql':
+        return query.replace('?', '%s')
+    return query
 
 @app.teardown_appcontext
 def close_connection(exception):
     """Close database connection"""
     db = getattr(g, '_database', None)
     if db is not None:
-        db.close()
+        if get_db_engine() == 'postgresql':
+            db.close()
+        else:
+            db.close()
 
 def init_db():
     """Initialize database"""
     with app.app_context():
         db = get_db()
-        # Products table
-        db.execute('''CREATE TABLE IF NOT EXISTS products
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      name TEXT UNIQUE NOT NULL,
-                      code TEXT UNIQUE NOT NULL)''')
+        if get_db_engine() == 'postgresql':
+            # PostgreSQL syntax
+            db.execute('''CREATE TABLE IF NOT EXISTS products
+                         (id SERIAL PRIMARY KEY,
+                          name TEXT UNIQUE NOT NULL,
+                          code TEXT UNIQUE NOT NULL)''')
 
-        # Batches table
-        db.execute('''CREATE TABLE IF NOT EXISTS batches
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      product_id INTEGER NOT NULL,
-                      batch_number TEXT UNIQUE NOT NULL,
-                      unique_code TEXT UNIQUE NOT NULL,
-                      FOREIGN KEY (product_id) REFERENCES products (id))''')
-        db.commit()
+            db.execute('''CREATE TABLE IF NOT EXISTS batches
+                         (id SERIAL PRIMARY KEY,
+                          product_id INTEGER NOT NULL,
+                          batch_number TEXT UNIQUE NOT NULL,
+                          quantity INTEGER DEFAULT 1,
+                          FOREIGN KEY (product_id) REFERENCES products (id))''')
+            db.commit()
+        else:
+            # SQLite syntax
+            db.execute('''CREATE TABLE IF NOT EXISTS products
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          name TEXT UNIQUE NOT NULL,
+                          code TEXT UNIQUE NOT NULL)''')
+
+            db.execute('''CREATE TABLE IF NOT EXISTS batches
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          product_id INTEGER NOT NULL,
+                          batch_number TEXT UNIQUE NOT NULL,
+                          quantity INTEGER DEFAULT 1,
+                          FOREIGN KEY (product_id) REFERENCES products (id))''')
+            db.commit()
 
 # Database functions
 def get_all_products():
@@ -62,12 +107,13 @@ def get_products_list():
 def get_product_by_batch(batch_number):
     """Get product by batch number"""
     db = get_db()
-    cursor = db.execute('''
+    query = format_query('''
         SELECT p.id as product_id, p.name, p.code, b.id as batch_id, b.batch_number, b.quantity
         FROM products p
         JOIN batches b ON p.id = b.product_id
         WHERE b.batch_number = ?
-    ''', (batch_number,))
+    ''')
+    cursor = db.execute(query, (batch_number,))
     row = cursor.fetchone()
     if row:
         return {
@@ -87,7 +133,7 @@ def add_product(name):
 
         # Generate product code (A, B, C, etc.) - find next available letter
         cursor = db.execute('SELECT code FROM products ORDER BY code')
-        existing_codes = [row['code'] for row in cursor.fetchall()]
+        existing_codes = [row['code'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()]
 
         # Find next available code starting from A
         code = 'A'
@@ -98,12 +144,13 @@ def add_product(name):
                 # For now, just keep incrementing - this is a simple solution
                 pass
 
-        db.execute('INSERT INTO products (name, code) VALUES (?, ?)',
-                  (name, code))
+        query = format_query('INSERT INTO products (name, code) VALUES (?, ?)')
+        db.execute(query, (name, code))
         db.commit()
 
         # Get the inserted product
-        cursor = db.execute('SELECT * FROM products WHERE code = ?', (code,))
+        query = format_query('SELECT * FROM products WHERE code = ?')
+        cursor = db.execute(query, (code,))
         return cursor.fetchone()
     except sqlite3.IntegrityError as e:
         # Check if it's a duplicate name or code error
@@ -121,17 +168,19 @@ def add_batch_to_product(product_id, batch_number, quantity=1):
         db = get_db()
 
         # Get product code
-        cursor = db.execute('SELECT code FROM products WHERE id = ?', (product_id,))
+        query = format_query('SELECT code FROM products WHERE id = ?')
+        cursor = db.execute(query, (product_id,))
         product = cursor.fetchone()
         if not product:
             return None
 
-        db.execute('INSERT INTO batches (product_id, batch_number, quantity) VALUES (?, ?, ?)',
-                  (product_id, batch_number, quantity))
+        query = format_query('INSERT INTO batches (product_id, batch_number, quantity) VALUES (?, ?, ?)')
+        db.execute(query, (product_id, batch_number, quantity))
         db.commit()
 
         # Get the inserted batch
-        cursor = db.execute('SELECT * FROM batches WHERE batch_number = ?', (batch_number,))
+        query = format_query('SELECT * FROM batches WHERE batch_number = ?')
+        cursor = db.execute(query, (batch_number,))
         return cursor.fetchone()
     except sqlite3.IntegrityError:
         return None  # Batch number already exists
@@ -139,10 +188,10 @@ def add_batch_to_product(product_id, batch_number, quantity=1):
 def update_product(product_id, name):
     """Update a product name"""
     db = get_db()
-    db.execute('UPDATE products SET name = ? WHERE id = ?',
-              (name, product_id))
+    query = format_query('UPDATE products SET name = ? WHERE id = ?')
+    db.execute(query, (name, product_id))
     db.commit()
-    return db.total_changes > 0
+    return db.rowcount > 0
 
 def update_batch(batch_id, batch_number=None, quantity=None):
     """Update a batch number and/or quantity"""
@@ -150,41 +199,44 @@ def update_batch(batch_id, batch_number=None, quantity=None):
         db = get_db()
         if batch_number is not None and quantity is not None:
             # Update both
-            db.execute('UPDATE batches SET batch_number = ?, quantity = ? WHERE id = ?',
-                      (batch_number, quantity, batch_id))
+            query = format_query('UPDATE batches SET batch_number = ?, quantity = ? WHERE id = ?')
+            db.execute(query, (batch_number, quantity, batch_id))
         elif batch_number is not None:
             # Update only batch_number
-            db.execute('UPDATE batches SET batch_number = ? WHERE id = ?',
-                      (batch_number, batch_id))
+            query = format_query('UPDATE batches SET batch_number = ? WHERE id = ?')
+            db.execute(query, (batch_number, batch_id))
         elif quantity is not None:
             # Update only quantity
-            db.execute('UPDATE batches SET quantity = ? WHERE id = ?',
-                      (quantity, batch_id))
+            query = format_query('UPDATE batches SET quantity = ? WHERE id = ?')
+            db.execute(query, (quantity, batch_id))
         else:
             # Nothing to update
             return False
 
         db.commit()
-        return db.total_changes > 0
-    except sqlite3.IntegrityError:
-        return False  # Batch number already exists
+        return db.rowcount > 0
+    except Exception:
+        return False  # Batch number already exists or other error
 
 def delete_product(product_id):
     """Delete a product and all its batches"""
     db = get_db()
     # Delete batches first (due to foreign key constraint)
-    db.execute('DELETE FROM batches WHERE product_id = ?', (product_id,))
+    query = format_query('DELETE FROM batches WHERE product_id = ?')
+    db.execute(query, (product_id,))
     # Delete product
-    db.execute('DELETE FROM products WHERE id = ?', (product_id,))
+    query = format_query('DELETE FROM products WHERE id = ?')
+    db.execute(query, (product_id,))
     db.commit()
-    return db.total_changes > 0
+    return db.rowcount > 0
 
 def delete_batch(batch_id):
     """Delete a specific batch"""
     db = get_db()
-    db.execute('DELETE FROM batches WHERE id = ?', (batch_id,))
+    query = format_query('DELETE FROM batches WHERE id = ?')
+    db.execute(query, (batch_id,))
     db.commit()
-    return db.total_changes > 0
+    return db.rowcount > 0
 
 @app.route('/')
 def index():
@@ -196,25 +248,46 @@ def health():
     """Health check endpoint"""
     return jsonify({"status": "ok"})
 
+@app.route('/test')
+def test():
+    """Minimal test page"""
+    return render_template('test_minimal.html')
+
 # Product management routes
 @app.route('/products')
 def products():
     """Display all products with batches"""
-    all_data = get_all_products()
-    return render_template('products.html', products=all_data)
+    try:
+        all_data = get_all_products()
+        print(f"Rendering products page with {len(all_data)} items")
+        return render_template('products.html', products=all_data)
+    except Exception as e:
+        print(f"Error in products route: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Internal Server Error: {str(e)}", 500
 
 @app.route('/api/products', methods=['GET'])
 def get_products():
     """Get all products and batches as JSON"""
-    products_data = get_all_products()
-    return jsonify([{
-        'id': p['id'],
-        'name': p['name'],
-        'code': p['code'],
-        'batch_id': p['batch_id'],
-        'batch_number': p['batch_number'],
-        'quantity': p['quantity'] if p['quantity'] is not None else 0
-    } for p in products_data])  # Include all products, even those without batches
+    try:
+        products_data = get_all_products()
+        result = [{
+            'id': p['id'],
+            'name': p['name'],
+            'code': p['code'],
+            'batch_id': p['batch_id'],
+            'batch_number': p['batch_number'],
+            'quantity': p['quantity'] if p['quantity'] is not None else 0
+        } for p in products_data]  # Include all products, even those without batches
+
+        print(f"API /api/products returning {len(result)} items")
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in get_products: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/products', methods=['POST'])
 def add_product_api():
@@ -519,8 +592,12 @@ if __name__ == "__main__":
     os.makedirs('templates', exist_ok=True)
 
     # Initialize database
-    init_db()
-    print("Database initialized successfully")
+    try:
+        init_db()
+        print("Database initialized successfully")
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        # Continue anyway - tables might already exist
 
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)  

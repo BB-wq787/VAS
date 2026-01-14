@@ -1,34 +1,22 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-测试Flask API端点的脚本
-"""
 import requests
+import json
 
-def test_api():
-    """测试API端点"""
-    url = "http://localhost:5000/api/extract_batch_from_url?url=http://nebl.cn/02130832411190283934"
+try:
+    response = requests.get('http://localhost:5000/api/products', timeout=10)
+    print(f'Status Code: {response.status_code}')
+    print(f'Headers: {dict(response.headers)}')
+    print(f'Content: {response.text}')
 
-    try:
-        print("正在测试API端点...")
-        response = requests.get(url, timeout=30)
-        print(f"状态码: {response.status_code}")
-
-        if response.status_code == 200:
+    if response.status_code == 200:
+        try:
             data = response.json()
-            print("API响应数据:")
-            print(f"  URL: {data.get('url')}")
-            print(f"  批次号找到: {data.get('batch_found')}")
-            print(f"  批次号: {data.get('batch_number')}")
-            print(f"  内容长度: {data.get('content_length')}")
-            if data.get('product_info'):
-                print(f"  产品信息: {data.get('product_info')}")
-        else:
-            print(f"错误: {response.text}")
+            print(f'JSON Data: {json.dumps(data, indent=2, ensure_ascii=False)}')
+        except json.JSONDecodeError as e:
+            print(f'JSON decode error: {e}')
+    else:
+        print(f'Error response: {response.text}')
 
-    except Exception as e:
-        print(f"请求失败: {str(e)}")
-
-if __name__ == "__main__":
-    test_api()
-
+except requests.exceptions.RequestException as e:
+    print(f'Request error: {e}')
+except Exception as e:
+    print(f'Other error: {e}')

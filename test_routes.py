@@ -30,3 +30,4 @@ if __name__ == "__main__":
     test_route(f"{base_url}/test_frontend.html", "测试页面")
     test_route(f"{base_url}/api/extract_batch_from_url?url=http://nebl.cn/02130832411190283934", "API端点")
 
+
